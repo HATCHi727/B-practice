@@ -6,11 +6,18 @@ import { DocumentGenerator } from "./services/documentGenerator.js";
 const app = express();
 app.use(express.json());
 
+// Middleware для логирования запросов
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+});
+
 const projectService = new ProjectService();
 const templateService = new TemplateService();
 const generator = new DocumentGenerator();
 
-// Валидация входных данных
+let cachedHeavyResult = null; // простой кеш для /heavy
+
 app.post("/api/projects", (req, res, next) => {
     try {
         const { name } = req.body;
@@ -20,7 +27,7 @@ app.post("/api/projects", (req, res, next) => {
         const newProject = projectService.createProject(req.body);
         res.status(201).json(newProject);
     } catch (err) {
-        next(err); // передаём ошибку в глобальный обработчик
+        next(err);
     }
 });
 
@@ -39,14 +46,22 @@ app.get("/api/projects/:id/export", (req, res, next) => {
     }
 });
 
-app.get("/heavy", (req, res) => {
-    console.time("heavy-calculation");
-    let total = 0;
-    for (let i = 0; i < 500000; i++) {
-        total += i;
+// Асинхронная версия /heavy с кешированием
+app.get("/heavy", (req, res, next) => {
+    if (cachedHeavyResult !== null) {
+        return res.send(`Cached result: ${cachedHeavyResult}`);
     }
-    console.timeEnd("heavy-calculation");
-    res.send("Calculation finished");
+
+    setImmediate(() => {
+        console.time("heavy-calculation");
+        let total = 0;
+        for (let i = 0; i < 500000; i++) {
+            total += i;
+        }
+        console.timeEnd("heavy-calculation");
+        cachedHeavyResult = total;
+        res.send(`Calculation finished, result: ${total}`);
+    });
 });
 
 // Глобальный обработчик ошибок
